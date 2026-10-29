@@ -416,9 +416,13 @@ function lastSyncAt_() {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), hour, Number(m[6]));
 }
 
+function alertRecipients_() {
+  return (props_().getProperty('ALERT_EMAILS') || '').split(',').map(s => s.trim()).filter(Boolean);
+}
+
 /** ALERT_EMAILS로 경고를 보낸다. 같은 종류는 ALERT_REPEAT_DAYS 안에 다시 보내지 않는다. 보냈으면 true. */
 function sendAlert_(type, subject, body) {
-  const to = (props_().getProperty('ALERT_EMAILS') || '').split(',').map(s => s.trim()).filter(Boolean);
+  const to = alertRecipients_();
   if (!to.length) return false;
   const sentKey = 'ALERT_SENT_' + type;
   const lastSent = Number(props_().getProperty(sentKey) || 0);
@@ -563,6 +567,23 @@ function syncEarnings_() {
     + ', 삭제 ' + removed + ', 예상→확정 ' + converted + ', 실적 결과 ' + results
     + ', 미국 조회 실패 ' + us.failed.length + ')');
   return summary;
+}
+
+/** 필요할 때 실행: ALERT_EMAILS로 테스트 메일을 보내 수신 여부를 확인한다. 경고 중복 방지 기록은 바꾸지 않는다. */
+function sendTestAlert() {
+  const to = alertRecipients_();
+  if (!to.length) throw new Error('스크립트 속성 ALERT_EMAILS가 비어 있습니다.');
+  const last = lastSyncAt_();
+  MailApp.sendEmail({
+    to: to.join(','),
+    subject: '[실적 캘린더] 테스트 메일',
+    body: '경고 메일 수신 확인용 테스트입니다. 실제 문제가 생긴 것은 아닙니다.\n\n'
+      + '받는 주소: ' + to.join(', ') + '\n'
+      + '마지막 PC 동기화: ' + (last ? last.toLocaleString('ko-KR') : '기록 없음') + '\n'
+      + '경고 조건: 동기화 ' + SYNC_STALE_DAYS + '일 이상 없음, 매일 실행 실패, 미국 종목 절반 이상 조회 실패'
+      + '\n\n운영기록: ' + SpreadsheetApp.getActiveSpreadsheet().getUrl(),
+  });
+  console.log(to.length + '개 주소로 테스트 메일을 보냈습니다: ' + to.join(', '));
 }
 
 /** 한 번만 실행: 매일 오전 7시(한국 시간) 자동 실행 트리거를 만든다. */

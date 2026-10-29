@@ -40,7 +40,7 @@
 2. 구글 시트 > 확장 프로그램 > Apps Script에 `Code.gs`를 붙여넣고, 시간대를 서울로 설정한다.
 3. 스크립트 속성에 `FINNHUB_API_KEY`, `SYNC_TOKEN`, `CALENDAR_ID`, `OPENDART_API_KEY`, `ALERT_EMAILS`(선택, 쉼표 구분)를 넣는다.
 4. 웹앱으로 배포하고 URL을 `.env`의 `APPS_SCRIPT_URL`에 넣는다.
-5. `python sync_watchlist.py` 실행 → Apps Script에서 `syncEarnings`, `setupDailyTrigger` 실행.
+5. `python sync_watchlist.py` 실행 → Apps Script에서 `syncEarnings`, `setupDailyTrigger` 실행. 경고 메일 수신은 `sendTestAlert`로 확인한다.
 6. Windows 작업 스케줄러에 로그온 시 `pythonw.exe sync_watchlist.py` 실행을 등록한다.
 
 표준 라이브러리만 사용한다(Python 3.11).

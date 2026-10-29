@@ -272,6 +272,21 @@ test('미국 종목 절반 이상이 조회에 실패하면 경고한다', () =>
   assert.match(gas.mails[0].subject, /3개 중 2개 조회 실패/);
 });
 
+test('테스트 메일은 모든 수신자에게 보내고 경고 중복 방지 기록은 바꾸지 않는다', () => {
+  const gas = createGas({ props: { ALERT_EMAILS: 'a@example.com, b@example.com' } });
+  gas.props.LAST_SYNC_AT = new Date().toISOString();
+  gas.context.sendTestAlert();
+  assert.equal(gas.mails.length, 1);
+  assert.equal(gas.mails[0].to, 'a@example.com,b@example.com');
+  assert.match(gas.mails[0].subject, /테스트 메일/);
+  assert.equal(Object.keys(gas.props).filter(k => k.startsWith('ALERT_SENT_')).length, 0);
+});
+
+test('수신자가 없으면 테스트 메일 대신 오류를 알린다', () => {
+  const gas = createGas();
+  assert.throws(() => gas.context.sendTestAlert(), /ALERT_EMAILS/);
+});
+
 test('예전 웹앱이 남긴 시트 머리글 시각으로도 마지막 동기화를 읽는다', () => {
   const gas = createGas();
   gas.sheet('관심종목').rows = [['종목', '마지막 동기화: 2026. 10. 29. 오후 6:26:41']];
