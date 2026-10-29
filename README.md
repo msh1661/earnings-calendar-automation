@@ -6,6 +6,12 @@
 
 ![구조도](docs/architecture.png)
 
+## 결과 화면
+
+노션 캘린더에 표시된 실적 일정 (2026년 12월)
+
+![노션 캘린더](docs/notion-calendar.png)
+
 ## 동작 방식
 
 - **PC (로그온 시):** `sync_watchlist.py`가 키움 REST API로 미국 관심그룹 전체와 국내 지정 그룹을 읽어 구글 시트로 보낸다. 키움 API는 등록한 IP에서만 호출되므로 이 단계만 PC에 둔다.
