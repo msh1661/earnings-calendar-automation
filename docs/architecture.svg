@@ -74,7 +74,7 @@
   <text x="482" y="416" class="boxText">태그로 직접 만든 일정만 생성 · 수정 · 삭제</text>
   <text x="482" y="440" class="boxText">발표일 변경 시 날짜 수정, 예상 → 확정 자동 전환</text>
   <text x="482" y="464" class="boxText">시트가 비면 중단 (일정 일괄 삭제 방지)</text>
-  <text x="482" y="488" class="boxText">실행마다 결과를 운영기록에 남김</text>
+  <text x="482" y="488" class="boxText">발표 후 7일: 실제 실적 · 잠정실적 공시 덧붙임</text>
 
   <!-- PC → 웹앱 -->
   <line x1="358" y1="400" x2="460" y2="236" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>
@@ -109,9 +109,9 @@
   <text x="982" y="377" class="boxText">캘린더 단위로 켜고 끄기</text>
 
   <rect x="964" y="418" width="252" height="90" rx="10" fill="#ffffff" stroke="#4ade80"/>
-  <text x="982" y="445" class="boxTitle">'운영기록' 시트</text>
-  <text x="982" y="469" class="boxText">추가 · 변경 · 삭제 · 예상→확정</text>
-  <text x="982" y="491" class="boxText">조회 실패 내역을 실행마다 기록</text>
+  <text x="982" y="445" class="boxTitle">운영기록 · 경고 메일</text>
+  <text x="982" y="469" class="boxText">변경 · 예상→확정 · 실적 결과 기록</text>
+  <text x="982" y="491" class="boxText">동기화 7일 지연 · 실패 시 gmail · 네이버</text>
 
   <!-- syncEarnings → 결과 -->
   <line x1="858" y1="330" x2="960" y2="220" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>

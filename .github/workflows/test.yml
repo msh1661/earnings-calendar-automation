@@ -1,0 +1,24 @@
+# 코드를 올릴 때마다 테스트를 자동으로 실행한다. 외부 API는 가짜 응답을 쓰므로 키가 필요 없다.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Seoul
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Apps Script(Code.gs) 테스트
+        run: node --test "tests/*.test.js"
+      - name: PC 스크립트(sources.py) 테스트
+        run: python -m unittest discover -s tests -v
