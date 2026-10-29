@@ -1,0 +1,19 @@
+# 키와 인증 정보
+.env
+*appkey*.txt
+*secretkey*.txt
+*api키*.txt
+*service-account*.json
+token_cache.json
+
+# 파이썬
+__pycache__/
+.venv/
+*.log
+sync.log*
+
+# 저장소에 넣지 않을 파일
+kiwoom-mcpb/
+kiwoom-mcpb.zip
+corp_codes.json
+실적발표자동화 방법.txt

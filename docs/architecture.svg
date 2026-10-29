@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" font-family="'Malgun Gothic','Apple SD Gothic Neo',sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <style>
+      .title { font-size: 26px; font-weight: 700; fill: #0f172a; }
+      .subtitle { font-size: 14px; fill: #64748b; }
+      .zoneLabel { font-size: 15px; font-weight: 700; }
+      .zoneNote { font-size: 12.5px; fill: #64748b; }
+      .boxTitle { font-size: 15px; font-weight: 700; fill: #0f172a; }
+      .boxText { font-size: 12.5px; fill: #334155; }
+      .ext { font-size: 13px; font-weight: 700; fill: #0f172a; }
+      .extText { font-size: 11.5px; fill: #475569; }
+      .edge { font-size: 11.5px; fill: #475569; }
+      .note { font-size: 12.5px; fill: #334155; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="720" fill="#ffffff"/>
+  <text x="40" y="52" class="title">실적발표 캘린더 자동화 구조</text>
+  <text x="40" y="78" class="subtitle">키움 관심종목 → 실적 일정 조회(미국 Finnhub · 국내 OpenDART) → 구글 캘린더 → 노션 캘린더</text>
+
+  <!-- ── PC 영역 ── -->
+  <rect x="40" y="110" width="340" height="420" rx="14" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="6 5"/>
+  <text x="60" y="140" class="zoneLabel" fill="#0f172a">내 PC</text>
+  <text x="60" y="160" class="zoneNote">로그온 1분 후 작업 스케줄러가 실행</text>
+
+  <rect x="64" y="180" width="292" height="66" rx="10" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="82" y="207" class="boxTitle">.env</text>
+  <text x="82" y="230" class="boxText">키움 · Finnhub · OpenDART 키, 동기화 암호</text>
+
+  <rect x="64" y="262" width="292" height="62" rx="10" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="82" y="288" class="note">키움 API는 등록한 공인 IP에서만 동작</text>
+  <text x="82" y="310" class="note">→ 키움 호출만 PC에 남김</text>
+
+  <rect x="64" y="342" width="292" height="166" rx="10" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="82" y="370" class="boxTitle">sync_watchlist.py</text>
+  <text x="82" y="395" class="boxText">· 미국 관심그룹 전체 (usa20200/20201)</text>
+  <text x="82" y="418" class="boxText">· 국내 '국장' 그룹 (ka01300/01301)</text>
+  <text x="82" y="441" class="boxText">· 종목코드 → DART 고유번호 변환</text>
+  <text x="82" y="464" class="boxText">· 결과를 sync.log에 기록</text>
+  <text x="82" y="490" class="boxText" fill="#64748b">pythonw.exe · 창 없이 몇 초 실행 후 종료</text>
+
+  <rect x="64" y="590" width="292" height="70" rx="10" fill="#eef2ff" stroke="#a5b4fc"/>
+  <text x="82" y="617" class="ext">키움 REST API</text>
+  <text x="82" y="640" class="extText">관심그룹 · 종목정보 조회 (주문 기능 미사용)</text>
+  <line x1="210" y1="588" x2="210" y2="512" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="218" y="560" class="edge">관심종목</text>
+
+  <!-- ── 구글 영역 ── -->
+  <rect x="440" y="110" width="440" height="420" rx="14" fill="#f0f9ff" stroke="#7dd3fc" stroke-dasharray="6 5"/>
+  <text x="460" y="140" class="zoneLabel" fill="#0c4a6e">구글 (PC가 꺼져 있어도 동작)</text>
+  <text x="460" y="160" class="zoneNote">Apps Script · 매일 오전 7시 트리거</text>
+
+  <rect x="464" y="180" width="392" height="88" rx="10" fill="#ffffff" stroke="#38bdf8"/>
+  <text x="482" y="207" class="boxTitle">웹앱 doPost → 구글 시트</text>
+  <text x="482" y="231" class="boxText">'관심종목'(미국) · '국내종목'(국내) 시트에 저장</text>
+  <text x="482" y="253" class="boxText">동기화 암호가 맞을 때만 기록</text>
+
+  <line x1="660" y1="270" x2="660" y2="286" stroke="#2563eb" stroke-width="1.6" marker-end="url(#arrowBlue)"/>
+
+  <rect x="464" y="290" width="392" height="218" rx="10" fill="#ffffff" stroke="#38bdf8"/>
+  <text x="482" y="318" class="boxTitle">syncEarnings</text>
+  <text x="482" y="344" class="boxText">미국: 90일 내 실적일, 장전 07:00 · 장후 16:00 ET 대표 시각</text>
+  <text x="482" y="368" class="boxText">국내 확정: IR 공시 중 개최목적에 '실적'이 있는 것</text>
+  <text x="482" y="392" class="boxText">국내 예상: 작년 분기 실적 공시일 + 364일</text>
+  <text x="482" y="416" class="boxText">태그로 직접 만든 일정만 생성 · 수정 · 삭제</text>
+  <text x="482" y="440" class="boxText">발표일 변경 시 날짜 수정, 예상 → 확정 자동 전환</text>
+  <text x="482" y="464" class="boxText">시트가 비면 중단 (일정 일괄 삭제 방지)</text>
+  <text x="482" y="488" class="boxText">실행마다 결과를 운영기록에 남김</text>
+
+  <!-- PC → 웹앱 -->
+  <line x1="358" y1="400" x2="460" y2="236" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <text x="392" y="300" class="edge">POST</text>
+
+  <!-- 외부 API: Finnhub / OpenDART -->
+  <rect x="464" y="590" width="186" height="70" rx="10" fill="#eef2ff" stroke="#a5b4fc"/>
+  <text x="480" y="617" class="ext">Finnhub</text>
+  <text x="480" y="640" class="extText">미국 실적 캘린더</text>
+  <rect x="670" y="590" width="186" height="70" rx="10" fill="#eef2ff" stroke="#a5b4fc"/>
+  <text x="686" y="617" class="ext">OpenDART</text>
+  <text x="686" y="640" class="extText">IR 개최 · 잠정실적 공시</text>
+  <line x1="557" y1="588" x2="557" y2="512" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="763" y1="588" x2="763" y2="512" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- ── 결과 영역 ── -->
+  <rect x="940" y="110" width="300" height="420" rx="14" fill="#f0fdf4" stroke="#86efac" stroke-dasharray="6 5"/>
+  <text x="960" y="140" class="zoneLabel" fill="#14532d">결과</text>
+
+  <rect x="964" y="160" width="252" height="112" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <text x="982" y="187" class="boxTitle">구글 캘린더</text>
+  <text x="982" y="211" class="boxText">gmail · '주식 실적발표' 전용 캘린더</text>
+  <text x="982" y="235" class="boxText">AAPL 실적 (장후) 11/3 06:00</text>
+  <text x="982" y="257" class="boxText">NAVER 실적발표 (IR) 11/12 09:00</text>
+
+  <line x1="1090" y1="274" x2="1090" y2="300" stroke="#16a34a" stroke-width="1.6" marker-end="url(#arrowGreen)"/>
+  <text x="1098" y="292" class="edge">동기화</text>
+
+  <rect x="964" y="304" width="252" height="88" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <text x="982" y="331" class="boxTitle">노션 캘린더</text>
+  <text x="982" y="355" class="boxText">PC · 모바일에서 조회</text>
+  <text x="982" y="377" class="boxText">캘린더 단위로 켜고 끄기</text>
+
+  <rect x="964" y="418" width="252" height="90" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <text x="982" y="445" class="boxTitle">'운영기록' 시트</text>
+  <text x="982" y="469" class="boxText">추가 · 변경 · 삭제 · 예상→확정</text>
+  <text x="982" y="491" class="boxText">조회 실패 내역을 실행마다 기록</text>
+
+  <!-- syncEarnings → 결과 -->
+  <line x1="858" y1="330" x2="960" y2="220" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <text x="884" y="250" class="edge">일정</text>
+  <text x="884" y="265" class="edge">기록</text>
+  <line x1="858" y1="470" x2="960" y2="465" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <text x="884" y="458" class="edge">실행 결과</text>
+
+  <!-- 키 보관 -->
+  <rect x="940" y="572" width="300" height="104" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="958" y="598" class="note" font-weight="700">키 보관</text>
+  <text x="958" y="621" class="note">PC: .env (키움 · Finnhub · OpenDART)</text>
+  <text x="958" y="643" class="note">구글: 스크립트 속성</text>
+  <text x="958" y="665" class="note">코드 · 로그 · 문서에는 키 없음</text>
+</svg>
