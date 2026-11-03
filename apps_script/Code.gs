@@ -43,6 +43,9 @@ const KR_RECENT_DAYS = 75;
 const KR_MATCH_DAYS = 15;
 // 분기 실적 공시로 볼 보고서명(월별 판매실적 공시와 구분하기 위해 연결 기준만 사용)
 const KR_EARNINGS_REPORT = '연결재무제표기준영업(잠정)실적';
+// 잠정실적 공시 해석: 금액 단위를 억원으로 바꾸는 값, 공시 증감율과 계산값의 허용 오차(%p)
+const KR_UNIT_TO_EOK = { '조원': 10000, '억원': 1, '백만원': 0.01, '천원': 0.00001, '원': 0.00000001 };
+const KR_PCT_TOLERANCE = 0.2;
 
 function props_() {
   return PropertiesService.getScriptProperties();
@@ -260,6 +263,85 @@ function isEarningsReport_(row) {
   return row.report_nm.indexOf(KR_EARNINGS_REPORT) !== -1 && row.report_nm.indexOf('기재정정') === -1;
 }
 
+/** 금액 칸을 숫자로 바꾼다. 숫자가 아니면 null. */
+function reportNumber_(token) {
+  const text = token.replace(/,/g, '').replace(/^△/, '-');
+  return /^-?\d+(\.\d+)?$/.test(text) ? Number(text) : null;
+}
+
+/**
+ * 잠정실적 공시의 '항목 당해실적' 행을 읽는다.
+ * 열 순서: 당기, 전기, 전기대비%, 흑자적자전환, 전년동기, 전년동기대비%, 흑자적자전환
+ * 공시가 준 증감율과 금액으로 계산한 증감율이 다르면 열을 잘못 읽은 것으로 보고 null을 돌려준다.
+ */
+function parseReportRow_(text, label) {
+  const m = text.match(new RegExp(label + '\\s*당해실적\\s+(.+?)\\s+누계실적'));
+  if (!m) return null;
+  let c = m[1].split(/\s+/);
+  if (c.length === 5) c = [c[0], c[1], c[2], '-', c[3], c[4], '-']; // 전환 여부 열이 없는 예전 양식
+  if (c.length !== 7) return null;
+  const row = {
+    current: reportNumber_(c[0]), previous: reportNumber_(c[1]), qoq: reportNumber_(c[2]), qoqTurn: c[3],
+    lastYear: reportNumber_(c[4]), yoy: reportNumber_(c[5]), yoyTurn: c[6],
+  };
+  if (row.current === null) return null;
+  const consistent = (base, pct) => {
+    if (base === null || pct === null || base <= 0) return true;
+    return Math.abs((row.current - base) / base * 100 - pct) <= KR_PCT_TOLERANCE;
+  };
+  return consistent(row.previous, row.qoq) && consistent(row.lastYear, row.yoy) ? row : null;
+}
+
+/** 잠정실적 공시 본문에서 단위와 매출액, 영업이익을 읽는다. 하나라도 읽지 못하면 null(링크만 남긴다). */
+function parseEarningsReport_(text) {
+  const unit = (text.match(/단위\s*:\s*(조원|억원|백만원|천원|원)/) || [])[1];
+  if (!unit) return null;
+  const revenue = parseReportRow_(text, '매출액');
+  const profit = parseReportRow_(text, '영업이익');
+  return revenue && profit ? { unit: unit, revenue: revenue, profit: profit } : null;
+}
+
+/** 공시 단위의 금액을 '195조 2,532억' 형태로 바꾼다. */
+function formatKrw_(amount, unit) {
+  const eok = Math.round(amount * KR_UNIT_TO_EOK[unit]);
+  const sign = eok < 0 ? '-' : '';
+  const abs = Math.abs(eok);
+  const comma = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const jo = Math.floor(abs / 10000);
+  const rest = abs % 10000;
+  if (!jo) return sign + comma(rest) + '억';
+  return sign + comma(jo) + '조' + (rest ? ' ' + comma(rest) + '억' : '');
+}
+
+/** 증감을 '+13.85%' 또는 '흑자전환'으로 표시한다. 비교할 값이 없으면 '-'. */
+function formatChange_(pct, turn) {
+  if (pct !== null) return (pct > 0 ? '+' : '') + pct + '%';
+  return turn && turn !== '-' ? turn : '-';
+}
+
+/** 일정 제목에 붙일 요약. 계절 영향을 줄이기 위해 전년 동기 대비 영업이익을 기준으로 한다. */
+function reportLabel_(report) {
+  const { yoy, yoyTurn } = report.profit;
+  if (yoyTurn && yoyTurn !== '-') return '영업이익 ' + yoyTurn;
+  if (yoy === null) return '공시됨';
+  return '영업이익 전년 대비 ' + (yoy > 0 ? '증가' : yoy < 0 ? '감소' : '동일');
+}
+
+/** 설명에 넣을 발표 결과 줄. 읽지 못한 공시는 링크만 남긴다. */
+function reportLines_(filing, report) {
+  const link = '잠정실적 공시: ' + dartLink_(filing.rcept_no);
+  if (!report) return ['[발표 결과] ' + filing.report_nm.trim(), link];
+  const line = (name, row) => name + ' ' + formatKrw_(row.current, report.unit)
+    + ' (전년 동기 대비 ' + formatChange_(row.yoy, row.yoyTurn)
+    + ', 직전 분기 대비 ' + formatChange_(row.qoq, row.qoqTurn) + ')';
+  return [
+    '[발표 결과] ' + line('매출', report.revenue),
+    '[발표 결과] ' + line('영업이익', report.profit),
+    '공시의 잠정치이며 확정치와 다를 수 있습니다.',
+    link,
+  ];
+}
+
 const dartLink_ = rceptNo => 'https://dart.fss.or.kr/dsaf001/main.do?rcpNo=' + rceptNo;
 
 /**
@@ -274,6 +356,19 @@ function krTargets_(stocks, today, until, from) {
     if (!corpCode) return;
     const recent = dartList_(corpCode, ymd_(addDays_(today, -KR_RECENT_DAYS), ''), ymd_(today, ''));
     const reports = recent.filter(isEarningsReport_);
+    // 발표 결과에는 정정 공시까지 포함해 최신 공시를 쓴다(목록은 최신순).
+    const filings = recent.filter(r => r.report_nm.indexOf(KR_EARNINGS_REPORT) !== -1);
+    const usedFilingDates = [];
+    // 정정 공시는 정정 전후 값만 담아 읽지 못할 수 있으므로, 최신 공시부터 읽히는 것을 쓴다. 모두 실패하면 최신 공시 링크만 남긴다.
+    const readBest = group => {
+      for (const filing of group) {
+        const report = parseEarningsReport_(dartDocumentText_(filing.rcept_no));
+        Utilities.sleep(200);
+        if (report) return { filing: filing, report: report };
+      }
+      console.warn(name + ' 잠정실적 공시를 읽지 못해 링크만 남깁니다: ' + group[0].rcept_no);
+      return { filing: group[0], report: null };
+    };
 
     // 1) 확정: 개최목적에 '실적'이 들어간 IR 공시. 정정 공시가 있으면 최신 공시를 쓴다.
     const confirmedDates = [];
@@ -289,25 +384,47 @@ function krTargets_(stocks, today, until, from) {
       confirmedDates.push(ir.date);
 
       // IR 일시 전후 3일 안에 올라온 잠정실적 공시를 발표 결과로 본다.
-      const report = reports.find(p => Math.abs(dateOnly_(toDash_(p.rcept_dt)) - dateOnly_(ir.date)) <= 3 * DAY_MS);
+      const near = p => Math.abs(dateOnly_(toDash_(p.rcept_dt)) - dateOnly_(ir.date)) <= 3 * DAY_MS;
+      const group = filings.filter(near);
+      group.forEach(p => usedFilingDates.push(p.rcept_dt));
+      const { filing, report } = group.length ? readBest(group) : { filing: null, report: null };
       const description = [
         ir.purpose,
         '방법: ' + ir.method,
         'IR 공시: ' + dartLink_(r.rcept_no),
-      ].concat(report ? ['[발표 결과] ' + report.report_nm.trim() + ': ' + dartLink_(report.rcept_no)] : [], [
+      ].concat(filing ? reportLines_(filing, report) : [], [
         '갱신: ' + new Date().toLocaleString('ko-KR'),
       ]).join('\n');
       const key = 'KR_' + code + '_' + quarter;
-      const title = name + ' 실적발표 (IR)' + (report ? ' · 공시됨' : '');
+      const title = name + ' 실적발표 (IR)' + (filing ? ' · ' + (report ? reportLabel_(report) : '공시됨') : '');
       if (ir.time) {
         const start = Utilities.parseDate(ir.date + ' ' + ir.time, 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
         targets[key] = {
           key: key, title: title, allDay: false, start: start,
-          end: new Date(start.getTime() + KR_IR_MINUTES * 60 * 1000), description: description, hasResult: !!report,
+          end: new Date(start.getTime() + KR_IR_MINUTES * 60 * 1000), description: description, hasResult: !!filing,
         };
       } else {
-        targets[key] = { key: key, title: title, allDay: true, start: dateOnly_(ir.date), description: description, hasResult: !!report };
+        targets[key] = { key: key, title: title, allDay: true, start: dateOnly_(ir.date), description: description, hasResult: !!filing };
       }
+    });
+
+    // 실적 IR과 연결되지 않은 공시(IR 없이 낸 잠정실적 등)는 공시일에 결과 일정을 따로 남긴다.
+    filings.forEach(filing => {
+      const filed = toDash_(filing.rcept_dt);
+      if (filed < fromStr || filed > todayStr) return;
+      if (usedFilingDates.indexOf(filing.rcept_dt) !== -1) return;
+      usedFilingDates.push(filing.rcept_dt);
+      const best = readBest(filings.filter(p => p.rcept_dt === filing.rcept_dt));
+      const report = best.report;
+      const key = 'KR_' + code + '_RESULT_' + filing.rcept_dt;
+      targets[key] = {
+        key: key,
+        title: name + ' 잠정실적 · ' + (report ? reportLabel_(report) : '공시됨'),
+        allDay: true,
+        start: dateOnly_(filed),
+        description: reportLines_(best.filing, report).concat(['갱신: ' + new Date().toLocaleString('ko-KR')]).join('\n'),
+        hasResult: true,
+      };
     });
 
     // 2) 예상: 작년 같은 시기의 분기 실적 공시일 + 364일(같은 요일).
@@ -540,10 +657,23 @@ function syncEarnings_() {
   // 앞으로 남은 일정 중 더 이상 필요 없는 것을 지운다.
   //  - 국내: 매번 전부 다시 계산하므로 이번 결과에 없으면 지운다(예상 → 확정 전환 포함).
   //  - 미국: 관심종목에서 빠진 종목만 지운다.
+  //  - 지난 국내 예상 일정: 날짜가 지났어도 가까운 시기의 실제 일정이 생겼을 때만 지운다.
   let converted = 0;
+  const hasActualNear = (code, start) => Object.keys(targets).some(k => k.indexOf('KR_' + code + '_') === 0
+    && k.indexOf('_EST_') === -1
+    && Math.abs(targets[k].start - start) <= KR_MATCH_DAYS * DAY_MS);
   Object.keys(existing).forEach(key => {
     const event = existing[key];
-    if (key in targets || event.getStartTime() < today) return;
+    if (key in targets) return;
+    const isPastEstimate = event.getStartTime() < today && key.indexOf('_EST_') !== -1;
+    if (isPastEstimate && hasActualNear(krCode_(key), event.getStartTime())) {
+      converted++;
+      changes.push('예상→확정: ' + (krNames[krCode_(key)] || krCode_(key)) + ' 예상 ' + startLabel_(event) + ' 삭제');
+      event.deleteEvent();
+      removed++;
+      return;
+    }
+    if (event.getStartTime() < today) return;
     const isKr = key.indexOf('KR_') === 0;
     if (isKr || symbols.indexOf(key.split('_')[0]) === -1) {
       if (isKr && key.indexOf('_EST_') !== -1 && createdKrConfirmed.indexOf(krCode_(key)) !== -1) {

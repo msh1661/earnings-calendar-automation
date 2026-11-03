@@ -1,7 +1,7 @@
 // Code.gs 검증. 실행: node --test tests/
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createGas, finnhubHandler, dartHandler, fixture, formatZoned, seoulDate, DAY_MS } = require('./gas_harness');
+const { createGas, finnhubHandler, dartHandler, earningsReportText, fixture, formatZoned, seoulDate, DAY_MS } = require('./gas_harness');
 
 const kst = date => formatZoned(date, 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
 const usRow = (overrides = {}) => Object.assign({
@@ -152,6 +152,136 @@ test('예상 일정은 작년 공시일 + 364일, 정정 공시는 제외, 확�
   assert.equal(estimate.title, '삼성전자 실적 (예상)');
   assert.equal(estimate.allDay, true);
   assert.equal(Object.keys(targets).filter(k => k.startsWith('KR_066570_EST')).length, 0);
+});
+
+/* ───────── 국내 잠정실적 공시 해석 ───────── */
+
+test('실제 잠정실적 공시에서 단위, 금액, 전기 대비, 전년 동기 대비를 읽는다', () => {
+  const { context } = createGas();
+  const report = context.parseEarningsReport_(fixture('dart_earnings_samsung_q3.txt'));
+  assert.equal(report.unit, '억원');
+  assert.equal(report.profit.current, 1074405);
+  assert.equal(report.profit.qoq, 20.06);
+  assert.equal(report.profit.lastYear, 121661);
+  assert.equal(report.profit.yoy, 783.11);
+  assert.equal(context.formatKrw_(report.revenue.current, report.unit), '195조 2,532억');
+});
+
+test('백만원 단위 공시도 같은 금액 표기로 바꾼다', () => {
+  const { context } = createGas();
+  const report = context.parseEarningsReport_(fixture('dart_earnings_skhynix_q3.txt'));
+  assert.equal(report.unit, '백만원');
+  assert.equal(context.formatKrw_(report.revenue.current, report.unit), '104조 6,155억');
+  assert.equal(context.formatKrw_(94847, '백만원'), '948억');
+});
+
+test('조원 단위 잠정 공시와 전환 열이 없는 예전 양식도 읽는다', () => {
+  const { context } = createGas();
+  const billions = context.parseEarningsReport_(earningsReportText('조원',
+    '195.00 171.50 13.70 - 86.06 126.59 -', '107.40 89.49 20.01 - 12.17 782.50 -'));
+  assert.equal(context.formatKrw_(billions.revenue.current, billions.unit), '195조');
+  assert.equal(context.formatKrw_(billions.profit.current, billions.unit), '107조 4,000억');
+  const old = context.parseEarningsReport_(earningsReportText('조원',
+    '74.00 79.14 -6.49 74.07 -0.09', '4.60 6.69 -31.24 10.44 -55.94'));
+  assert.equal(old.profit.yoy, -55.94);
+});
+
+test('정정 전후 값만 있는 정정 공시를 읽지 못하면 같은 날 원 공시 값을 쓴다', () => {
+  const gas = createGas({ props: { OPENDART_API_KEY: 'test' }, dart: dartHandler({
+    S: [
+      { rcept_dt: '20261029', report_nm: '[기재정정]연결재무제표기준영업(잠정)실적(공정공시)', rcept_no: 'fix' },
+      { rcept_dt: '20261029', report_nm: '연결재무제표기준영업(잠정)실적(공정공시)', rcept_no: 'orig' },
+    ],
+  }, {
+    fix: '정정사항 정정전 정정후 매출액(당해실적) - 영업이익(당해실적) 195.00 107.40 195.25 107.44',
+    orig: fixture('dart_earnings_samsung_q3.txt'),
+  }) });
+  const { context } = gas;
+  const today = context.dateOnly_('2026-10-30');
+  const targets = context.krTargets_([['005930', '삼성전자', 'S']], today, context.addDays_(today, 90), context.addDays_(today, -7));
+  const event = targets.KR_005930_RESULT_20261029;
+  assert.match(event.description, /매출 195조 2,532억/);
+  assert.match(event.description, /rcpNo=orig/);
+});
+
+test('감소한 공시는 제목에 전년 대비 감소로 표시한다', () => {
+  const { context } = createGas();
+  const report = context.parseEarningsReport_(earningsReportText('백만원',
+    '6,367,124 5,527,241 15.2 - 5,369,431 18.6 -', '94,847 245,754 -61.4 - 203,749 -53.4 -'));
+  assert.equal(context.reportLabel_(report), '영업이익 전년 대비 감소');
+  const lines = context.reportLines_({ rcept_no: 'x', report_nm: '실적' }, report).join('\n');
+  assert.match(lines, /영업이익 948억 \(전년 동기 대비 -53\.4%, 직전 분기 대비 -61\.4%\)/);
+});
+
+test('흑자전환은 증감율 대신 전환 여부로 표시한다', () => {
+  const { context } = createGas();
+  const report = context.parseEarningsReport_(earningsReportText('억원',
+    '1,000 900 11.1 - 800 25.0 -', '100 -50 - 흑자전환 -30 - 흑자전환'));
+  assert.equal(context.reportLabel_(report), '영업이익 흑자전환');
+  assert.match(context.reportLines_({ rcept_no: 'x', report_nm: '실적' }, report).join('\n'), /영업이익 100억 \(전년 동기 대비 흑자전환, 직전 분기 대비 흑자전환\)/);
+});
+
+test('공시 증감율과 금액이 맞지 않으면 열을 잘못 읽은 것으로 보고 수치를 쓰지 않는다', () => {
+  const { context } = createGas();
+  assert.equal(context.parseEarningsReport_(earningsReportText('억원',
+    '1,000 900 11.1 - 800 25.0 -', '100 90 11.1 - 80 99.0 -')), null);
+});
+
+test('단위나 항목을 읽지 못하면 수치 없이 공시 링크만 남긴다', () => {
+  const { context } = createGas();
+  assert.equal(context.parseEarningsReport_('양식이 다른 공시 본문'), null);
+  const lines = context.reportLines_({ rcept_no: 'abc', report_nm: '연결재무제표기준영업(잠정)실적' }, null).join('\n');
+  assert.match(lines, /rcpNo=abc/);
+  assert.doesNotMatch(lines, /전년 동기 대비/);
+});
+
+test('정정 공시가 있으면 최신 값을 IR 일정 결과로 쓴다', () => {
+  const gas = createGas({ props: { OPENDART_API_KEY: 'test' }, dart: dartHandler({
+    L: [
+      { rcept_dt: '20261028', report_nm: '[기재정정]연결재무제표기준영업(잠정)실적(공정공시)', rcept_no: 'fix' },
+      { rcept_dt: '20261028', report_nm: '기업설명회(IR)개최(안내공시)', rcept_no: 'ir' },
+    ],
+  }, {
+    fix: earningsReportText('억원', '238,241 238,265 -0.01 - 218,737 8.9 -', '7,819 15,791 -50.5 - 6,889 13.5 -'),
+    ir: '일시 2026-10-28 16:00 장소 - 3. 개최목적 2026년 3분기 경영실적 발표 4. 개최방법 컨퍼런스콜 5. 후원기관',
+  }) });
+  const { context } = gas;
+  const today = context.dateOnly_('2026-10-29');
+  const targets = context.krTargets_([['066570', 'LG전자', 'L']], today, context.addDays_(today, 90), context.addDays_(today, -7));
+  const event = targets.KR_066570_2026Q3;
+  assert.equal(event.title, 'LG전자 실적발표 (IR) · 영업이익 전년 대비 증가');
+  assert.match(event.description, /매출 23조 8,241억/);
+  assert.equal(Object.keys(targets).filter(k => k.includes('_RESULT_')).length, 0);
+});
+
+test('IR 없이 낸 잠정실적도 공시일 결과 일정으로 남긴다', () => {
+  const gas = createGas({ props: { OPENDART_API_KEY: 'test' }, dart: dartHandler({
+    I: [{ rcept_dt: '20261027', report_nm: '연결재무제표기준영업(잠정)실적(공정공시)', rcept_no: 'r' }],
+  }, { r: earningsReportText('백만원', '6,367,124 5,527,241 15.2 - 5,369,431 18.6 -', '94,847 245,754 -61.4 - 203,749 -53.4 -') }) });
+  const { context } = gas;
+  const today = context.dateOnly_('2026-10-29');
+  const targets = context.krTargets_([['011070', 'LG이노텍', 'I']], today, context.addDays_(today, 90), context.addDays_(today, -7));
+  const event = targets.KR_011070_RESULT_20261027;
+  assert.equal(event.title, 'LG이노텍 잠정실적 · 영업이익 전년 대비 감소');
+  assert.equal(event.allDay, true);
+  assert.equal(event.hasResult, true);
+});
+
+test('날짜가 지난 예상 일정은 실제 일정이 생겨야 지우고, 없으면 남겨 둔다', () => {
+  const past = new Date(Date.now() - 2 * DAY_MS);
+  const run = targets => {
+    const gas = createGas({ props: { OPENDART_API_KEY: 'test' } });
+    gas.setWatchlist(['AAPL'], [['005930', '삼성전자', 'E']]);
+    gas.props.LAST_SYNC_AT = new Date().toISOString();
+    gas.calendar.add('삼성전자 실적 (예상)', past, null, true, 'KR_005930_EST_X');
+    gas.replace('krTargets_', () => targets);
+    gas.context.syncEarnings();
+    return gas;
+  };
+  assert.equal(run({}).calendar.find('삼성전자 실적 (예상)').title, '삼성전자 실적 (예상)');
+  const replaced = run({ KR_005930_RESULT_X: { key: 'KR_005930_RESULT_X', title: '삼성전자 잠정실적 · 공시됨', allDay: true, start: past, description: '', hasResult: true } });
+  assert.equal(replaced.calendar.find('삼성전자 실적 (예상)'), undefined);
+  assert.equal(replaced.logValue('예상→확정 전환'), 1);
 });
 
 /* ───────── 매일 실행 (캘린더 반영과 운영기록) ───────── */

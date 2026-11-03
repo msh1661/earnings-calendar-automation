@@ -205,4 +205,10 @@ function createGas(options = {}) {
   };
 }
 
-module.exports = { createGas, finnhubHandler, dartHandler, fixture, parseZoned, formatZoned, seoulDate, DAY_MS };
+/** 잠정실적 공시 본문의 표 부분을 만든다. revenue, profit은 '당해실적' 뒤의 7개 칸. */
+function earningsReportText(unit, revenue, profit) {
+  return '1. 연결실적내용 단위 : ' + unit + ', % 구분 당기실적 전기실적 매출액 당해실적 ' + revenue
+    + ' 누계실적 1 - - - 1 0.0 - 영업이익 당해실적 ' + profit + ' 누계실적 1 - - - 1 0.0 - 2. 정보제공내역';
+}
+
+module.exports = { earningsReportText, createGas, finnhubHandler, dartHandler, fixture, parseZoned, formatZoned, seoulDate, DAY_MS };
