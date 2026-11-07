@@ -1,8 +1,8 @@
-# 실적발표 캘린더 자동화
+# 관심종목 실적 캘린더와 주간 리포트 자동화
 
 [![tests](https://github.com/msh1661/earnings-calendar-automation/actions/workflows/test.yml/badge.svg)](https://github.com/msh1661/earnings-calendar-automation/actions/workflows/test.yml)
 
-키움증권 관심종목의 실적발표 일정을 매일 자동으로 조회해 구글 캘린더(노션 캘린더)에 기록한다.
+키움증권 관심종목의 실적발표 일정을 매일 자동으로 조회해 구글 캘린더(노션 캘린더)에 기록하고, 매주 월요일 관심종목 시황 리포트를 노션과 메일로 받는다.
 
 ![구조도](docs/architecture.png)
 
@@ -11,6 +11,10 @@
 노션 캘린더에 표시된 실적 일정 (2026년 12월)
 
 ![노션 캘린더](docs/notion-calendar.png)
+
+주간 시황 리포트 메일 (2026-11-09 리포트, 앞부분)
+
+![주간 리포트 메일](docs/weekly-report-mail.png)
 
 ## 동작 방식
 

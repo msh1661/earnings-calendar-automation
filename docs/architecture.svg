@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" font-family="'Malgun Gothic','Apple SD Gothic Neo',sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1040" viewBox="0 0 1280 1040" font-family="'Malgun Gothic','Apple SD Gothic Neo',sans-serif">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
@@ -8,6 +8,9 @@
     </marker>
     <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
     </marker>
     <style>
       .title { font-size: 26px; font-weight: 700; fill: #0f172a; }
@@ -23,9 +26,9 @@
     </style>
   </defs>
 
-  <rect width="1280" height="720" fill="#ffffff"/>
-  <text x="40" y="52" class="title">실적발표 캘린더 자동화 구조</text>
-  <text x="40" y="78" class="subtitle">키움 관심종목 → 실적 일정 조회(미국 Finnhub · 국내 OpenDART) → 구글 캘린더 → 노션 캘린더</text>
+  <rect width="1280" height="1040" fill="#ffffff"/>
+  <text x="40" y="52" class="title">관심종목 실적 캘린더와 주간 리포트 자동화 구조</text>
+  <text x="40" y="78" class="subtitle">매일: 키움 관심종목 → 실적 일정 조회(미국 Finnhub · 국내 OpenDART) → 구글 캘린더 → 노션 캘린더</text>
 
   <!-- ── PC 영역 ── -->
   <rect x="40" y="110" width="340" height="420" rx="14" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="6 5"/>
@@ -121,9 +124,66 @@
   <text x="884" y="458" class="edge">실행 결과</text>
 
   <!-- 키 보관 -->
-  <rect x="940" y="572" width="300" height="104" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
-  <text x="958" y="598" class="note" font-weight="700">키 보관</text>
-  <text x="958" y="621" class="note">PC: .env (키움 · Finnhub · OpenDART)</text>
-  <text x="958" y="643" class="note">구글: 스크립트 속성</text>
-  <text x="958" y="665" class="note">코드 · 로그 · 문서에는 키 없음</text>
+  <rect x="940" y="566" width="300" height="134" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="958" y="591" class="note" font-weight="700">키 보관</text>
+  <text x="958" y="613" class="note">PC: .env (키움 · Finnhub · OpenDART)</text>
+  <text x="958" y="635" class="note">구글: 스크립트 속성 (노션 읽기 키 포함)</text>
+  <text x="958" y="657" class="note">Anthropic: 네트워크 시크릿 (Finnhub)</text>
+  <text x="958" y="679" class="note">코드 · 로그 · 문서에는 키 없음</text>
+
+  <!-- ══ 매주 월요일: 주간 시황 리포트 ══ -->
+  <line x1="40" y1="722" x2="1240" y2="722" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="40" y="752" class="zoneLabel" fill="#0f172a">매주 월요일: 주간 시황 리포트 (2026-11 추가)</text>
+
+  <!-- Anthropic 클라우드 -->
+  <rect x="40" y="770" width="340" height="250" rx="14" fill="#faf5ff" stroke="#c4b5fd" stroke-dasharray="6 5"/>
+  <text x="60" y="798" class="zoneLabel" fill="#4c1d95">Anthropic 클라우드 (PC 없이 동작)</text>
+  <text x="60" y="818" class="zoneNote">Claude Code 루틴 · 월 07:00</text>
+  <rect x="64" y="834" width="292" height="166" rx="10" fill="#ffffff" stroke="#a78bfa"/>
+  <text x="82" y="861" class="boxTitle">주간 시황 리포트 작성 (AI)</text>
+  <text x="82" y="886" class="boxText">· 노션 관심종목 목록 읽기</text>
+  <text x="82" y="909" class="boxText">· Finnhub 종가와 실적 일정 조회</text>
+  <text x="82" y="932" class="boxText">· 웹 뉴스 조사, 항목별 출처 링크</text>
+  <text x="82" y="955" class="boxText">· 사실과 해석 구분, 매매 권유 없음</text>
+  <text x="82" y="981" class="boxText" fill="#64748b">키는 네트워크 시크릿, 연결은 노션만</text>
+
+  <!-- 노션 -->
+  <rect x="440" y="770" width="210" height="250" rx="14" fill="#fafaf9" stroke="#d6d3d1" stroke-dasharray="6 5"/>
+  <text x="460" y="798" class="zoneLabel" fill="#292524">노션</text>
+  <rect x="456" y="834" width="178" height="166" rx="10" fill="#ffffff" stroke="#a8a29e"/>
+  <text x="472" y="861" class="boxTitle">주간 시황 리포트</text>
+  <text x="472" y="886" class="boxText">관심종목 목록</text>
+  <text x="472" y="906" class="boxText" fill="#64748b">(티커, 영문명, 한글명)</text>
+  <text x="472" y="932" class="boxText">하위 페이지</text>
+  <text x="472" y="952" class="boxText" fill="#64748b">리포트 YYYY-MM-DD</text>
+  <text x="472" y="978" class="boxText">종가 기록 → 다음 주 비교</text>
+
+  <!-- 구글 Apps Script -->
+  <rect x="670" y="770" width="210" height="250" rx="14" fill="#f0f9ff" stroke="#7dd3fc" stroke-dasharray="6 5"/>
+  <text x="690" y="798" class="zoneLabel" fill="#0c4a6e">구글 Apps Script</text>
+  <text x="690" y="818" class="zoneNote">월 08시대 트리거</text>
+  <rect x="686" y="834" width="178" height="166" rx="10" fill="#ffffff" stroke="#38bdf8"/>
+  <text x="702" y="861" class="boxTitle">sendWeeklyReport</text>
+  <text x="702" y="886" class="boxText">읽기 전용 노션 연결</text>
+  <text x="702" y="909" class="boxText">블록 → 메일 HTML</text>
+  <text x="702" y="932" class="boxText">본문 + 노션 링크</text>
+  <text x="702" y="955" class="boxText">리포트 없음, 오류 시</text>
+  <text x="702" y="975" class="boxText">안내 메일</text>
+
+  <!-- 결과 -->
+  <rect x="940" y="770" width="300" height="250" rx="14" fill="#f0fdf4" stroke="#86efac" stroke-dasharray="6 5"/>
+  <text x="960" y="798" class="zoneLabel" fill="#14532d">결과</text>
+  <rect x="964" y="834" width="252" height="120" rx="10" fill="#ffffff" stroke="#4ade80"/>
+  <text x="982" y="861" class="boxTitle">주간 리포트 메일</text>
+  <text x="982" y="886" class="boxText">gmail · 네이버로 본문과 링크 수신</text>
+  <text x="982" y="909" class="boxText">노션 앱에서도 같은 리포트 확인</text>
+  <text x="982" y="934" class="boxText" fill="#64748b">메일 발송은 AI 사용량을 쓰지 않음</text>
+
+  <!-- 흐름 -->
+  <line x1="358" y1="905" x2="452" y2="905" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrowPurple)"/>
+  <text x="374" y="893" class="edge">작성</text>
+  <line x1="636" y1="905" x2="682" y2="905" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <text x="640" y="893" class="edge">읽기</text>
+  <line x1="866" y1="905" x2="960" y2="895" stroke="#2563eb" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <text x="890" y="888" class="edge">발송</text>
 </svg>
