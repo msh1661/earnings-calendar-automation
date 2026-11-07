@@ -8,10 +8,13 @@
  *     국내: OpenDART '기업설명회(IR) 개최' 공시(확정) + 작년 같은 시기 실적 공시일(예상)
  *     발표가 끝난 최근 일정에는 실제 실적(미국)이나 잠정실적 공시 링크(국내)를 덧붙인다.
  *     PC 동기화가 오래 멈췄거나 실행이 실패하면 경고 메일을 보낸다.
+ * - sendWeeklyReport: 매주 월요일 트리거로 실행되어, Claude Code 루틴이 노션에 쓴
+ *     이번 주 시황 리포트를 읽어 본문과 링크를 메일로 보낸다.
  *
  * 스크립트 속성(프로젝트 설정 > 스크립트 속성)에 다음 값을 넣는다.
  *   FINNHUB_API_KEY, SYNC_TOKEN, CALENDAR_ID, OPENDART_API_KEY
- *   ALERT_EMAILS: 경고 메일 받을 주소(쉼표로 구분, 선택)
+ *   ALERT_EMAILS: 경고 메일과 주간 리포트를 받을 주소(쉼표로 구분, 선택)
+ *   NOTION_API_KEY, NOTION_REPORT_PAGE_ID: 주간 리포트 메일용(읽기 전용 노션 통합, 선택)
  */
 
 const LOOKAHEAD_DAYS = 90;
@@ -722,4 +725,180 @@ function setupDailyTrigger() {
     .filter(t => t.getHandlerFunction() === 'syncEarnings')
     .forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('syncEarnings').timeBased().everyDays(1).atHour(7).create();
+}
+
+/* ───────────── 주간 시황 리포트 메일 ───────────── */
+
+const NOTION_VERSION = '2022-06-28';
+const REPORT_TITLE_PREFIX = '주간 시황 리포트 ';
+const REPORT_TABLE_STYLE = 'border-collapse:collapse;font-size:13px;margin:8px 0';
+const REPORT_CELL_STYLE = 'border:1px solid #d0d7de;padding:4px 8px;text-align:left;vertical-align:top';
+
+/** 노션 API GET. 실패하면 상태 코드를 담아 오류를 던진다. */
+function notionGet_(path) {
+  const key = props_().getProperty('NOTION_API_KEY');
+  if (!key) throw new Error('스크립트 속성 NOTION_API_KEY가 비어 있습니다.');
+  const res = UrlFetchApp.fetch('https://api.notion.com/v1/' + path, {
+    headers: { Authorization: 'Bearer ' + key, 'Notion-Version': NOTION_VERSION },
+    muteHttpExceptions: true,
+  });
+  if (res.getResponseCode() !== 200) {
+    throw new Error('노션 호출 실패 (' + res.getResponseCode() + '): ' + path.split('?')[0]);
+  }
+  return JSON.parse(res.getContentText());
+}
+
+/** 블록의 하위 블록을 모두 읽는다(100개씩 나눠 받는 것을 이어 붙인다). */
+function notionChildren_(blockId) {
+  const blocks = [];
+  let cursor = null;
+  do {
+    const data = notionGet_('blocks/' + blockId + '/children?page_size=100' + (cursor ? '&start_cursor=' + cursor : ''));
+    Array.prototype.push.apply(blocks, data.results);
+    cursor = data.has_more ? data.next_cursor : null;
+  } while (cursor);
+  return blocks;
+}
+
+/** date가 속한 주의 월요일 0시(서울). 일요일은 지난 월요일로 본다. */
+function mondayOf_(date) {
+  const day = dateOnly_(ymd_(date));
+  return addDays_(day, -((day.getDay() + 6) % 7));
+}
+
+const notionUrl_ = id => 'https://www.notion.so/' + id.replace(/-/g, '');
+
+function escapeHtml_(text) {
+  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** 노션 서식 텍스트를 HTML로 바꾼다. 링크는 http(s)만 남긴다. */
+function richTextHtml_(parts) {
+  return (parts || []).map(part => {
+    let html = escapeHtml_(part.plain_text || '');
+    const a = part.annotations || {};
+    if (a.code) html = '<code>' + html + '</code>';
+    if (a.bold) html = '<b>' + html + '</b>';
+    if (a.italic) html = '<i>' + html + '</i>';
+    if (part.href && /^https?:\/\//.test(part.href)) html = '<a href="' + escapeHtml_(part.href) + '">' + html + '</a>';
+    return html;
+  }).join('');
+}
+
+function tableHtml_(block) {
+  const rows = notionChildren_(block.id).filter(b => b.type === 'table_row');
+  const header = block.table && block.table.has_column_header;
+  const body = rows.map((row, i) => {
+    const tag = header && i === 0 ? 'th' : 'td';
+    return '<tr>' + row.table_row.cells.map(cell =>
+      '<' + tag + ' style="' + REPORT_CELL_STYLE + '">' + richTextHtml_(cell) + '</' + tag + '>').join('') + '</tr>';
+  }).join('');
+  return '<div style="overflow-x:auto"><table style="' + REPORT_TABLE_STYLE + '">' + body + '</table></div>';
+}
+
+/** 노션 블록 목록을 메일용 HTML로 바꾼다. 목록 항목은 묶고, 하위 블록은 다시 읽어 넣는다. */
+function blocksHtml_(blocks) {
+  const LIST_TAGS = { bulleted_list_item: 'ul', numbered_list_item: 'ol' };
+  const out = [];
+  let openList = null;
+  blocks.forEach(block => {
+    const listTag = LIST_TAGS[block.type] || null;
+    if (openList && openList !== listTag) { out.push('</' + openList + '>'); openList = null; }
+    if (listTag && !openList) { out.push('<' + listTag + '>'); openList = listTag; }
+
+    const data = block[block.type] || {};
+    const text = richTextHtml_(data.rich_text);
+    const children = block.has_children && block.type !== 'table' && block.type !== 'child_page'
+      ? blocksHtml_(notionChildren_(block.id)) : '';
+    switch (block.type) {
+      case 'heading_1': out.push('<h2>' + text + '</h2>' + children); break;
+      case 'heading_2': out.push('<h3>' + text + '</h3>' + children); break;
+      case 'heading_3': out.push('<h4>' + text + '</h4>' + children); break;
+      case 'paragraph': if (text || children) out.push('<p>' + text + '</p>' + children); break;
+      case 'bulleted_list_item':
+      case 'numbered_list_item': out.push('<li>' + text + children + '</li>'); break;
+      case 'quote':
+      case 'callout':
+        out.push('<blockquote style="border-left:3px solid #d0d7de;margin:8px 0;padding:4px 12px">' + text + children + '</blockquote>');
+        break;
+      case 'table': out.push(tableHtml_(block)); break;
+      case 'divider': out.push('<hr>'); break;
+      default: if (text || children) out.push('<p>' + text + '</p>' + children);
+    }
+  });
+  if (openList) out.push('</' + openList + '>');
+  return out.join('\n');
+}
+
+/**
+ * '주간 시황 리포트' 페이지 아래에서 리포트를 찾는다. 없으면 null.
+ * monday를 주면 그 날짜 리포트, 주지 않으면 제목 날짜가 가장 늦은 리포트.
+ */
+function findWeeklyReport_(monday) {
+  const reports = notionChildren_(props_().getProperty('NOTION_REPORT_PAGE_ID'))
+    .filter(b => b.type === 'child_page' && b.child_page.title.indexOf(REPORT_TITLE_PREFIX) === 0)
+    .sort((a, b) => (a.child_page.title < b.child_page.title ? 1 : -1));
+  if (!monday) return reports[0] || null;
+  return reports.filter(b => b.child_page.title === REPORT_TITLE_PREFIX + monday)[0] || null;
+}
+
+/** 매주 월요일 실행: 이번 주 시황 리포트 본문과 노션 링크를 ALERT_EMAILS로 보낸다. */
+function sendWeeklyReport() {
+  sendReportMail_(ymd_(mondayOf_(new Date())));
+}
+
+/** 필요할 때 실행: 날짜와 관계없이 가장 최근 리포트를 보낸다(수신 확인, 다시 보내기용). */
+function sendLatestWeeklyReport() {
+  sendReportMail_(null);
+}
+
+function sendReportMail_(monday) {
+  const to = alertRecipients_();
+  if (!to.length) throw new Error('스크립트 속성 ALERT_EMAILS가 비어 있습니다.');
+  const label = monday || '최근';
+  const parentId = props_().getProperty('NOTION_REPORT_PAGE_ID');
+  try {
+    if (!parentId) throw new Error('스크립트 속성 NOTION_REPORT_PAGE_ID가 비어 있습니다.');
+    const page = findWeeklyReport_(monday);
+    if (!page) {
+      MailApp.sendEmail({
+        to: to.join(','),
+        subject: '[주간 시황] ' + label + ' 리포트가 아직 없습니다',
+        body: '노션에서 "' + REPORT_TITLE_PREFIX + (monday || 'YYYY-MM-DD') + '" 페이지를 찾지 못했습니다.\n'
+          + 'Claude Code 루틴 실행 기록(https://claude.ai/code/routines)을 확인하세요.\n\n'
+          + '리포트 목록: ' + notionUrl_(parentId),
+      });
+      console.log(label + ' 리포트가 없어 안내 메일을 보냈습니다.');
+      return;
+    }
+    const link = notionUrl_(page.id);
+    const html = '<div style="font-family:sans-serif;line-height:1.5">'
+      + '<p><a href="' + link + '">노션에서 보기</a></p>'
+      + '<h1 style="font-size:20px">' + escapeHtml_(page.child_page.title) + '</h1>'
+      + blocksHtml_(notionChildren_(page.id))
+      + '<hr><p><a href="' + link + '">노션에서 보기</a></p></div>';
+    MailApp.sendEmail({
+      to: to.join(','),
+      subject: '[주간 시황] ' + page.child_page.title,
+      htmlBody: html,
+      body: page.child_page.title + '\n\n메일 앱이 HTML을 보여 주지 않으면 노션에서 확인하세요: ' + link,
+    });
+    console.log(to.length + '개 주소로 ' + page.child_page.title + ' 메일을 보냈습니다.');
+  } catch (error) {
+    MailApp.sendEmail({
+      to: to.join(','),
+      subject: '[주간 시황] ' + label + ' 리포트 메일 생성 실패',
+      body: String(error) + '\n\n노션 통합 키(NOTION_API_KEY), 페이지 공유 설정, NOTION_REPORT_PAGE_ID를 확인하세요.'
+        + (parentId ? '\n리포트 목록: ' + notionUrl_(parentId) : ''),
+    });
+    throw error;
+  }
+}
+
+/** 한 번만 실행: 매주 월요일 오전 8시(한국 시간) 주간 리포트 메일 트리거를 만든다. */
+function setupWeeklyReportTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'sendWeeklyReport')
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('sendWeeklyReport').timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(8).create();
 }

@@ -22,6 +22,12 @@
   - 발표 후 7일 동안: 미국은 실제 EPS·매출과 예상 대비 차이(상회·부합·하회), 국내는 잠정실적 공시의 매출·영업이익과 전년 동기, 직전 분기 대비 증감을 덧붙인다. 읽지 못한 공시는 링크만 남긴다.
   - PC 동기화가 7일 이상 멈추거나, 실행이 실패하거나, 미국 종목 절반 이상 조회에 실패하면 경고 메일을 보낸다(같은 경고는 3일에 한 번).
 
+## 주간 시황 리포트 (선택)
+
+- **월요일 07:00:** Claude Code 클라우드 루틴이 노션 페이지의 관심종목을 읽고, Finnhub 시세와 실적 일정, 웹 뉴스를 조사해 노션에 `주간 시황 리포트 YYYY-MM-DD` 하위 페이지를 만든다. 일정, 주요 지수와 관심종목 주간 등락, 지난주 흐름(사실과 해석 구분), 실적 결과, 용어 설명, 출처, 다음 주 비교용 종가 기록이 들어간다. 매수와 매도 권유는 넣지 않는다.
+- **월요일 08시대:** Apps Script `sendWeeklyReport`가 읽기 전용 노션 통합으로 리포트를 읽어 본문과 노션 링크를 `ALERT_EMAILS`로 보낸다. 리포트가 없거나 노션 호출이 실패하면 안내 메일을 보낸다.
+- 루틴의 Finnhub 키는 클라우드 환경의 네트워크 시크릿(`X-Finnhub-Token` 헤더)으로만 둔다. 루틴 지시문과 노션 페이지 주소는 저장소에 넣지 않는다.
+
 ## 파일
 
 | 파일 | 역할 |
@@ -30,7 +36,7 @@
 | `sync_watchlist.py` | 관심종목을 Apps Script 웹앱으로 전송 |
 | `check_connection.py` | 키움 · Finnhub 연결 점검 |
 | `preview_earnings.py` | 미국 실적 일정 미리보기 |
-| `apps_script/Code.gs` | 웹앱, 매일 실적 동기화, 실적 결과 반영, 경고 메일, 운영기록 |
+| `apps_script/Code.gs` | 웹앱, 매일 실적 동기화, 실적 결과 반영, 경고 메일, 운영기록, 주간 리포트 메일 |
 | `tests/` | Code.gs(Node)와 sources.py(Python) 테스트, 공개 공시 샘플 |
 | `.env.example` | 설정 템플릿 |
 
@@ -42,6 +48,7 @@
 4. 웹앱으로 배포하고 URL을 `.env`의 `APPS_SCRIPT_URL`에 넣는다.
 5. `python sync_watchlist.py` 실행 → Apps Script에서 `syncEarnings`, `setupDailyTrigger` 실행. 경고 메일 수신은 `sendTestAlert`로 확인한다.
 6. Windows 작업 스케줄러에 로그온 시 `pythonw.exe sync_watchlist.py` 실행을 등록한다.
+7. (주간 리포트 메일) 노션 개발자 도구에서 API 토큰 방식 연결을 만들고 권한을 콘텐츠 읽기만 남긴 뒤, 리포트 상위 페이지에 연결한다. 스크립트 속성 `NOTION_API_KEY`, `NOTION_REPORT_PAGE_ID`를 넣고 `sendLatestWeeklyReport`로 수신을 확인한 뒤 `setupWeeklyReportTrigger`를 실행한다.
 
 표준 라이브러리만 사용한다(Python 3.11).
 
@@ -62,6 +69,7 @@ python -m unittest discover -s tests -v
 | 캘린더 반영 | 날짜 변경 이동, 예상→확정 전환, 빠진 종목 정리, 태그 없는 개인 일정 보호, 시트가 비면 삭제 없이 중단 |
 | 경고 메일 | 7일 이상 동기화 없음, 3일 안 중복 발송 방지, 미국 조회 절반 이상 실패, 실행 실패 |
 | 웹앱 | 잘못된 동기화 암호 거부, 종목코드 앞자리 0 유지 |
+| 주간 리포트 메일 | 이번 주 월요일 계산, 제목, 목록, 표, 링크 변환, 100개 넘는 블록 이어 읽기, HTML 문자 처리, `http(s)` 외 링크 제거, 리포트 없음 안내, 노션 오류 시 실패 메일 |
 | PC 스크립트 | `.env` 해석, 국내 그룹 이름 오류 안내, DART 고유번호 캐시, ADR 티커, 서머타임 |
 
 테스트가 실제로 버그를 잡는지 확인하려면 `GAS_CODE_PATH`에 일부러 고장 낸 `Code.gs` 경로를 주고 실행한다.

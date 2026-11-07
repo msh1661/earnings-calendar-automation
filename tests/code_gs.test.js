@@ -1,7 +1,7 @@
 // Code.gs 검증. 실행: node --test tests/
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createGas, finnhubHandler, dartHandler, earningsReportText, fixture, formatZoned, seoulDate, DAY_MS } = require('./gas_harness');
+const { createGas, finnhubHandler, dartHandler, notionHandler, nb, earningsReportText, fixture, formatZoned, seoulDate, DAY_MS } = require('./gas_harness');
 
 const kst = date => formatZoned(date, 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
 const usRow = (overrides = {}) => Object.assign({
@@ -448,4 +448,110 @@ test('국내 목록을 보내지 않는 예전 PC 스크립트면 국내 시트�
   gas.sheet('국내종목').rows = [['종목코드'], ['005930', '삼성전자', '00126380']];
   gas.context.doPost({ postData: { contents: JSON.stringify({ token: 'secret-token', symbols: ['AAPL'] }) } });
   assert.equal(gas.sheets['국내종목'].rows.length, 2);
+});
+
+/* ───────── 주간 시황 리포트 메일 ───────── */
+
+const REPORT_PROPS = { ALERT_EMAILS: 'a@example.com, b@example.com', NOTION_API_KEY: 'notion-test', NOTION_REPORT_PAGE_ID: 'parent' };
+const thisMonday = gas => gas.context.ymd_(gas.context.mondayOf_(new Date()));
+const reportPage = (title, id = 'report-1') => ({ id, type: 'child_page', has_children: true, child_page: { title } });
+
+/** 이번 주 리포트 하나가 있는 노션을 만든다. body는 리포트 본문 블록. */
+function reportGas(body, extraChildren = {}, options = {}) {
+  const probe = createGas();
+  const title = '주간 시황 리포트 ' + thisMonday(probe);
+  const notion = notionHandler(Object.assign({
+    parent: [nb('paragraph', '안내'), reportPage('주간 시황 리포트 2020-01-06', 'old'), reportPage(title)],
+    'report-1': body,
+  }, extraChildren), options);
+  return { gas: createGas({ props: REPORT_PROPS, notion }), notion, title };
+}
+
+test('월요일 기준일은 같은 주 월요일이고 일요일은 지난 월요일로 본다', () => {
+  const { context } = createGas();
+  const monday = d => context.ymd_(context.mondayOf_(new Date(d)));
+  assert.equal(monday('2026-11-09T08:00:00+09:00'), '2026-11-09');
+  assert.equal(monday('2026-11-08T23:00:00+09:00'), '2026-11-02');
+  assert.equal(monday('2026-11-14T10:00:00+09:00'), '2026-11-09');
+});
+
+test('이번 주 리포트를 찾아 제목, 목록, 표, 링크를 HTML 메일로 보낸다', () => {
+  const table = { id: 'tbl', type: 'table', has_children: true, table: { has_column_header: true } };
+  const row = cells => ({ type: 'table_row', table_row: { cells: cells.map(c => [{ plain_text: c, annotations: {} }]) } });
+  const { gas, notion, title } = reportGas([
+    nb('heading_2', '1) 한 줄 요약'),
+    nb('paragraph', [{ plain_text: '굵게', annotations: { bold: true } }, { plain_text: ' 출처', annotations: {}, href: 'https://news.example.com/a' }]),
+    nb('bulleted_list_item', '첫째'),
+    nb('bulleted_list_item', '둘째'),
+    table,
+  ], { tbl: [row(['티커', '한글명']), row(['NVDA', '엔비디아'])] });
+
+  gas.context.sendWeeklyReport();
+  assert.equal(gas.mails.length, 1);
+  const mail = gas.mails[0];
+  assert.equal(mail.to, 'a@example.com,b@example.com');
+  assert.equal(mail.subject, '[주간 시황] ' + title);
+  assert.match(mail.htmlBody, /<h3>1\) 한 줄 요약<\/h3>/);
+  assert.match(mail.htmlBody, /<b>굵게<\/b><a href="https:\/\/news\.example\.com\/a"> 출처<\/a>/);
+  assert.match(mail.htmlBody, /<ul>\n<li>첫째<\/li>\n<li>둘째<\/li>\n<\/ul>/);
+  assert.match(mail.htmlBody, /<th [^>]*>티커<\/th>/);
+  assert.match(mail.htmlBody, /<td [^>]*>엔비디아<\/td>/);
+  assert.equal((mail.htmlBody.match(/https:\/\/www\.notion\.so\/report1/g) || []).length, 2);
+  assert.match(mail.body, /notion\.so\/report1/);
+  assert.equal(notion.requests[0].headers.Authorization, 'Bearer notion-test');
+  assert.ok(notion.requests.every(r => r.headers['Notion-Version']));
+});
+
+test('블록이 100개를 넘으면 다음 묶음까지 이어서 읽는다', () => {
+  const body = Array.from({ length: 5 }, (_, i) => nb('paragraph', '문단' + i));
+  const { gas } = reportGas(body, {}, { pageSize: 2 });
+  gas.context.sendWeeklyReport();
+  assert.match(gas.mails[0].htmlBody, /문단0[\s\S]*문단4/);
+});
+
+test('본문의 HTML 문자는 그대로 실행되지 않게 바꾸고 http(s)가 아닌 링크는 버린다', () => {
+  const { gas } = reportGas([nb('paragraph', [{ plain_text: '<script>x</script>', annotations: {}, href: 'javascript:alert(1)' }])]);
+  gas.context.sendWeeklyReport();
+  assert.match(gas.mails[0].htmlBody, /&lt;script&gt;x&lt;\/script&gt;/);
+  assert.doesNotMatch(gas.mails[0].htmlBody, /javascript:/);
+});
+
+test('이번 주 리포트가 없으면 안내 메일을 보낸다', () => {
+  const notion = notionHandler({ parent: [reportPage('주간 시황 리포트 2020-01-06', 'old')] });
+  const gas = createGas({ props: REPORT_PROPS, notion });
+  gas.context.sendWeeklyReport();
+  assert.equal(gas.mails.length, 1);
+  assert.match(gas.mails[0].subject, /리포트가 아직 없습니다/);
+  assert.equal(gas.mails[0].htmlBody, undefined);
+});
+
+test('노션 호출이 실패하면 실패 메일을 보내고 오류를 다시 던진다', () => {
+  const notion = notionHandler({}, { status: { parent: 401 } });
+  const gas = createGas({ props: REPORT_PROPS, notion });
+  assert.throws(() => gas.context.sendWeeklyReport(), /노션 호출 실패 \(401\)/);
+  assert.equal(gas.mails.length, 1);
+  assert.match(gas.mails[0].subject, /메일 생성 실패/);
+  assert.doesNotMatch(gas.mails[0].body, /notion-test/);
+});
+
+test('노션 키가 없으면 실패 메일로 알리고, 수신자가 없으면 메일 없이 오류를 낸다', () => {
+  const noKey = createGas({ props: { ALERT_EMAILS: 'a@example.com', NOTION_REPORT_PAGE_ID: 'parent' }, notion: notionHandler({}) });
+  assert.throws(() => noKey.context.sendWeeklyReport(), /NOTION_API_KEY/);
+  assert.match(noKey.mails[0].subject, /메일 생성 실패/);
+  const noMail = createGas({ props: { NOTION_API_KEY: 'k', NOTION_REPORT_PAGE_ID: 'parent' }, notion: notionHandler({}) });
+  assert.throws(() => noMail.context.sendWeeklyReport(), /ALERT_EMAILS/);
+  assert.equal(noMail.mails.length, 0);
+});
+
+test('수동 보내기는 날짜와 관계없이 제목 날짜가 가장 늦은 리포트를 보낸다', () => {
+  const notion = notionHandler({
+    parent: [reportPage('주간 시황 리포트 2026-11-09', 'new'), reportPage('주간 시황 리포트 2026-11-02', 'old'), nb('paragraph', '안내')],
+    new: [nb('paragraph', '최신 본문')],
+    old: [nb('paragraph', '지난 본문')],
+  });
+  const gas = createGas({ props: REPORT_PROPS, notion });
+  gas.context.sendLatestWeeklyReport();
+  assert.equal(gas.mails[0].subject, '[주간 시황] 주간 시황 리포트 2026-11-09');
+  assert.match(gas.mails[0].htmlBody, /최신 본문/);
+  assert.doesNotMatch(gas.mails[0].htmlBody, /지난 본문/);
 });

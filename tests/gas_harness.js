@@ -140,6 +140,35 @@ function dartHandler(lists, docs) {
   };
 }
 
+/**
+ * 노션: children = { 블록ID: [블록, ...] }. 블록이 pageSize보다 많으면 나눠서 돌려준다.
+ * status = { 블록ID: 상태 코드 }로 실패를 흉내 낸다. 받은 요청은 requests에 남긴다.
+ */
+function notionHandler(children, { pageSize = 100, status = {} } = {}) {
+  const requests = [];
+  const handler = (url, opts) => {
+    requests.push({ url, headers: (opts && opts.headers) || {} });
+    const m = url.match(/\/v1\/blocks\/([^/]+)\/children/);
+    if (!m) throw new Error('예상하지 못한 URL: ' + url);
+    if (status[m[1]]) return { code: status[m[1]], text: '{}' };
+    const all = children[m[1]] || [];
+    const start = Number(new URL(url).searchParams.get('start_cursor') || 0);
+    const end = start + pageSize;
+    return { code: 200, text: JSON.stringify({
+      results: all.slice(start, end), has_more: end < all.length, next_cursor: end < all.length ? String(end) : null,
+    }) };
+  };
+  handler.requests = requests;
+  return handler;
+}
+
+/** 노션 블록을 짧게 만든다. text는 문자열 또는 rich_text 배열. */
+function nb(type, text, extra = {}) {
+  const richText = typeof text === 'string' ? [{ plain_text: text, annotations: {} }] : text;
+  return Object.assign({ id: extra.id || type + '-' + Math.random().toString(36).slice(2), type, has_children: false,
+    [type]: { rich_text: richText } }, extra);
+}
+
 /* ── Apps Script 환경 만들기 ── */
 
 function createGas(options = {}) {
@@ -148,7 +177,7 @@ function createGas(options = {}) {
   const calendar = makeCalendar();
   const mails = [];
   const logs = [];
-  const fetchers = { finnhub: options.finnhub || (() => ({ code: 200, text: '{"earningsCalendar":[]}' })), dart: options.dart };
+  const fetchers = { finnhub: options.finnhub || (() => ({ code: 200, text: '{"earningsCalendar":[]}' })), dart: options.dart, notion: options.notion };
 
   const response = r => ({
     getResponseCode: () => r.code,
@@ -172,7 +201,8 @@ function createGas(options = {}) {
       getUrl: () => 'https://docs.google.com/spreadsheets/d/test',
     }) },
     CalendarApp: { getCalendarById: id => (id === props.CALENDAR_ID ? calendar : null) },
-    UrlFetchApp: { fetch: url => response(url.includes('opendart') ? fetchers.dart(url) : fetchers.finnhub(url)) },
+    UrlFetchApp: { fetch: (url, opts) => response(url.includes('api.notion.com') ? fetchers.notion(url, opts)
+      : url.includes('opendart') ? fetchers.dart(url) : fetchers.finnhub(url)) },
     Utilities: {
       parseDate: (text, tz) => parseZoned(text, tz),
       formatDate: formatZoned,
@@ -211,4 +241,4 @@ function earningsReportText(unit, revenue, profit) {
     + ' 누계실적 1 - - - 1 0.0 - 영업이익 당해실적 ' + profit + ' 누계실적 1 - - - 1 0.0 - 2. 정보제공내역';
 }
 
-module.exports = { earningsReportText, createGas, finnhubHandler, dartHandler, fixture, parseZoned, formatZoned, seoulDate, DAY_MS };
+module.exports = { earningsReportText, createGas, finnhubHandler, dartHandler, notionHandler, nb, fixture, parseZoned, formatZoned, seoulDate, DAY_MS };
